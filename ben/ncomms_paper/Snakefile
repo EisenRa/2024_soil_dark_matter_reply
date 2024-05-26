@@ -1,0 +1,59 @@
+import polars as pl
+
+metadata = pl.read_csv('SraRunTable.csv')
+wgs = metadata.filter(pl.col('Assay Type') == 'WGS')
+print("WGS: ", wgs.shape[0])
+sample_names = list(wgs['Run'])
+
+singlem = '/home/woodcrob/git/singlem/bin/singlem'
+metapackage = '/work/microbiome/db/singlem/S4.2.2.GTDB_r214.metapackage_20240502.smpkg.zb'
+
+rule all:
+    input:
+        'snakedata/smf.csv'
+
+rule pipe:
+    output:
+        json = 'snakedata/pipe/{sample}.json',
+        done = touch('snakedata/pipe/{sample}.done'),
+        profile = 'snakedata/pipe/{sample}.profile'
+    conda:
+        "singlem-dev"
+    shell:
+        """
+        {singlem} pipe --forward data/{wildcards.sample}_1.fastq.gz --reverse data/{wildcards.sample}_2.fastq.gz --archive-otu-table {output.json} --metapackage {metapackage} --taxonomic-profile {output.profile} --taxonomic-profile-krona {output.profile}.html
+        """
+
+# rule merge_profiles:
+#     input:
+#         profiles = expand('snakedata/pipe/{sample}.profile', sample=sample_names)
+#     output:
+#         merged = 'snakedata/merged_profiles.csv'
+#     conda:
+#         "singlem-dev"
+#     shell:
+#         """
+#         {singlem} summarise --input-taxonomic-profile {input.profiles} --output-taxonomic-profile {output.merged}
+#         """
+
+rule smf:
+    input:
+        profile = 'snakedata/pipe/{sample}.profile',
+    output:
+        smf = 'snakedata/smf/{sample}.csv',
+    conda:
+        "singlem-dev"
+    shell:
+        """
+        {singlem} microbial_fraction --input-profile {input.profile} --output-tsv {output.smf} --metapackage {metapackage} --forward data/{wildcards.sample}_1.fastq.gz --reverse data/{wildcards.sample}_2.fastq.gz
+        """
+
+rule concat_smf:
+    input:
+        smfs = expand('snakedata/smf/{sample}.csv', sample=sample_names)
+    output:
+        concat = 'snakedata/smf.csv'
+    shell:
+        """
+        xsv cat rows -d'\\t' {input.smfs} > {output.concat}
+        """
