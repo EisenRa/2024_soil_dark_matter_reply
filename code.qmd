@@ -21,6 +21,7 @@ editor: visual
 
 library(tidyverse)
 library(janitor)
+library(patchwork)
 
 pooled_smf <- read_delim("data/smf.csv")
 md <- read_delim("data/metadata.tsv") %>%
@@ -61,24 +62,33 @@ Let's now use our SMF (**S**ingleM **M**icrobial **F**raction) estimates to chec
 #| message: false
 #| warning: false
 
-df %>%
+set.seed(1337)
+
+fig1a <- df %>%
+  mutate(environment_biome = str_replace_all(environment_biome,
+                                             "_", " ")) %>%
   ggplot(aes(x = environment_biome, y = (100 - read_fraction), 
              colour = environment_biome)) +
-  geom_boxplot() +
+  geom_boxplot(outlier.alpha = 0) +
+  geom_hline(yintercept = (100 - median(df$read_fraction)),
+             linetype = 2, colour = "grey") +
   geom_jitter(height = 0, width = 0.3, alpha = 0.7) +
-  geom_hline(yintercept = (100 - mean(df$read_fraction)),
-             linetype = 2) +
   theme_classic() +
   theme(
     legend.position = "none",
-    axis.text.x = element_text(angle = 45, hjust = 1)
+    axis.text.x = element_text(size = 14,
+                               angle = 45, 
+                               hjust = 1),
+    axis.text.y = element_text(size = 14),
+    axis.title = element_text(size = 14, face = "bold")
         ) +
-  ylab("Non-bacterial fraction (%)")
+  ylab("Non-bacterial fraction (%)") +
+  xlab("Soil environment")
   
-
+fig1a
 ```
 
-OK, so the assertion that 4-9% of the base pairs are eukaryotic is a severe underestimate! `r scales::number((100 - mean(df$read_fraction)) / 4, accuracy = 0.1)`- to `r scales::number((100 - mean(df$read_fraction)) / 9, accuracy = 0.1)` -fold understimations to be precise.
+OK, so the assertion that 4-9% of the base pairs are eukaryotic is a severe underestimate! `r scales::number((100 - median(df$read_fraction)) / 4, accuracy = 0.1)`- to `r scales::number((100 - median(df$read_fraction)) / 9, accuracy = 0.1)` -fold understimations to be precise.
 
 It's also interesting that we do see variation in non-bacterial read fractions between soil environmental biomes.
 
@@ -101,11 +111,9 @@ Let's see where SMF's AGS estimates lie between Piton et al. and Osmund et al.s'
 
 ```{r}
 
-SMF_AGS <- as.numeric(scales::number(mean(df$average_bacterial_archaeal_genome_size) / 1000000, accuracy = 0.1))
+SMF_AGS <- as.numeric(scales::number(mean(df$average_bacterial_archaeal_genome_size) / 1000000, accuracy = 0.1))  
 
-AGS_overestimate_fold <- as.numeric(scales::number(6.8 / SMF_AGS, accuracy = 0.01))
-AGS_overestimate_pc <- (1 - as.numeric(scales::number(SMF_AGS / 6.8, accuracy = 0.001))) * 100
-
+AGS_overestimate_fold <- as.numeric(scales::number(6.8 / SMF_AGS, accuracy = 0.01)) AGS_overestimate_pc <- (1 - as.numeric(scales::number(SMF_AGS / 6.8, accuracy = 0.001))) * 100 
 ```
 
 So SMF's AGS estimate `r SMF_AGS` Mbp is between Osmund et al.'s 3 Mbp and Piton et al.'s 6.8 Mbp. With Piton et al.'s 6.8 Mbp being a `r AGS_overestimate_fold` -fold overestimate (`r AGS_overestimate_pc` %).
@@ -117,15 +125,178 @@ Now that we have more robust AGS estimates thanks to SMF, let's see if this rela
 > “Therefore, we suggest that the strong association of very large AGS with acidic soils in the full metagenomes is likely an artefact of ecosystems with acidic soils having larger proportions of non-bacterial DNA.”
 
 ```{r}
+#First, recrete with Piton et al.'s original AGS values
 
-df %>%
-  ggplot(aes(x = soilp_h, y = average_bacterial_archaeal_genome_size / 1000000)) +
-  geom_smooth(method = "lm") +
+# lm_piton <- lm(average_genome_size_bp ~ soilp_h, df)
+# shapiro.test(residuals(lm_piton))
+# 
+# summary(lm_piton)
+
+
+glm_piton <- glm(average_genome_size_bp ~ soilp_h, 
+                 df, family = Gamma)
+
+summary(glm_piton)
+
+
+#R squared
+r_piton <- paste0("~italic(R^2)", " == ", scales::number(with(summary(glm_piton), 1 - deviance/null.deviance), accuracy = 0.0001))
+
+
+fig1b <- df %>%
+  ggplot(aes(x = soilp_h, y = average_genome_size_bp / 1e6)) +
+  geom_smooth(method = "glm") +
   geom_point(aes(colour = environment_biome)) +
+  annotate("text", x = 3.5, y = 5.5, label = r_piton, 
+           parse = TRUE, size = 6) +
   theme_classic() +
-  labs(x = "Soil pH", y = "SingleM Average Genome Size (Mbp)")
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 14),
+    axis.title = element_text(size = 14, face = "bold")
+        ) +
+  labs(x = "Soil pH", y = "Piton et al. Average Genome Size (Mbp)")
 
-correlation <- cor(df$average_bacterial_archaeal_genome_size, df$soilp_h)
+
+
+fig1b
 ```
 
-Despite their inaccurate AGS estimates, we still see a strong negative correlation as observed by Piton et al. Correlation = `r correlation`.
+```{r}
+#Now with corrected AGS values
+
+glm_smf <- glm(average_bacterial_archaeal_genome_size ~ soilp_h, 
+               df, family = Gamma)
+
+r_smf <- paste0("~italic(R^2)", " == ", scales::number(with(summary(glm_smf), 1 - deviance/null.deviance), accuracy = 0.0001))
+
+fig1c <- df %>%
+  ggplot(aes(x = soilp_h, 
+             y = average_bacterial_archaeal_genome_size / 1e6)) +
+  geom_smooth(method = "glm") +
+  geom_point(aes(colour = environment_biome)) +
+  annotate("text", x = 3.5, y = 4, label = r_smf, 
+           parse = TRUE, size = 6) +
+  theme_classic() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 14),
+    axis.title = element_text(size = 14, face = "bold")
+        ) +
+  labs(x = "Soil pH", y = "SingleM Average Genome Size (Mbp)")
+
+fig1c
+```
+
+Despite their inaccurate AGS estimates, we actually observe a stronger relationship between AGS and soil pH: `r r_smf`, compared to Piton et al. `r r_piton`.
+
+### Export figure for paper (Figure 1)
+
+```{r}
+
+fig1 <- fig1a / (fig1b + fig1c) + plot_annotation(tag_levels = 'A')  ggsave("figures/figure_1.png", fig1, width = 9, height = 12)
+```
+
+### Validation with an independent dataset
+
+Piton et al. cite an [independent study](u) of soil metagenomes that also found the same relationship between AGS and soil pH. Let's see if we also observe this trend.
+
+```{r}
+
+
+```
+
+### AGS vs soil pH by biome
+
+```{r}
+#| message: false
+#| warning: false
+
+set.seed(1337)
+
+df %>%
+  mutate(environment_biome = str_replace_all(environment_biome,
+                                             "_", " ")) %>%
+  filter(environment_biome != "Arctic tundra" & environment_biome != "Grasslands and shrublands") %>%
+  ggplot(aes(x = soilp_h, 
+             y = average_bacterial_archaeal_genome_size / 1e6, 
+             colour = environment_biome)) +
+  geom_point(size = 3) +
+  facet_wrap(~environment_biome) +
+  geom_smooth(method = "glm") +
+  theme_classic() +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title = element_text(size = 14, face = "bold")
+        ) +
+  ylab("Soil pH") +
+  xlab("Average Genome Size (Mbp)")
+  
+
+```
+
+### Supplemental analyses
+
+```{r}
+
+df %>% 
+  ggplot(aes(x = soilp_h, y = read_fraction)) + 
+  geom_smooth(method = "glm") +
+  geom_point(aes(colour = environment_biome), size = 3) +
+  theme_classic() +
+  theme(
+    legend.position = "top",
+    legend.title = element_blank(),
+    axis.text = element_text(size = 14),
+    axis.title = element_text(size = 14, face = "bold")
+        ) +
+  labs(x = "Soil pH", y = "SingleM Microbial Fraction (%)")
+
+
+
+df %>% 
+  ggplot(aes(x = mean_annual_temperature_c, y = read_fraction)) + 
+  geom_smooth(method = "glm") +
+  geom_point(aes(colour = environment_biome), size = 3) +
+  theme_classic() +
+  theme(
+    legend.position = "top",
+    legend.title = element_blank(),
+    axis.text = element_text(size = 14),
+    axis.title = element_text(size = 14, face = "bold")
+        ) +
+  labs(x = "Mean annual temp (C)", y = "SingleM Microbial Fraction (%)")
+
+
+
+df %>% 
+  ggplot(aes(x = annual_precipitation_mm, y = read_fraction)) + 
+  geom_smooth(method = "glm") +
+  geom_point(aes(colour = environment_biome), size = 3) +
+  theme_classic() +
+  theme(
+    legend.position = "top",
+    legend.title = element_blank(),
+    axis.text = element_text(size = 14),
+    axis.title = element_text(size = 14, face = "bold")
+        ) +
+  labs(x = "Annual precipitation (mm)", y = "SingleM Microbial Fraction (%)")
+
+
+df %>% 
+  ggplot(aes(x = mapping_coverage_kegg, y = read_fraction)) + 
+  geom_smooth(method = "glm") +
+  geom_point(aes(colour = environment_biome), size = 3) +
+  theme_classic() +
+  theme(
+    legend.position = "top",
+    legend.title = element_blank(),
+    axis.text = element_text(size = 14),
+    axis.title = element_text(size = 14, face = "bold")
+        ) +
+  labs(x = "Mean mapping coverage KEGG", y = "SingleM Microbial Fraction (%)")
+
+
+```
