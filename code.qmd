@@ -1,5 +1,5 @@
 ---
-title: "Re-analysis of soil replies with SMF values"
+title: "2024 reply to Osmund et al. and Piton et al."
 author: Raphael Eisenhofer
 format: 
   gfm:
@@ -113,7 +113,9 @@ Let's see where SMF's AGS estimates lie between Piton et al. and Osmund et al.s'
 
 SMF_AGS <- as.numeric(scales::number(mean(df$average_bacterial_archaeal_genome_size) / 1000000, accuracy = 0.1))  
 
-AGS_overestimate_fold <- as.numeric(scales::number(6.8 / SMF_AGS, accuracy = 0.01)) AGS_overestimate_pc <- (1 - as.numeric(scales::number(SMF_AGS / 6.8, accuracy = 0.001))) * 100 
+AGS_overestimate_fold <- as.numeric(scales::number(6.8 / SMF_AGS, accuracy = 0.01)) 
+
+AGS_overestimate_pc <- (1 - as.numeric(scales::number(SMF_AGS / 6.8, accuracy = 0.001))) * 100 
 ```
 
 So SMF's AGS estimate `r SMF_AGS` Mbp is between Osmund et al.'s 3 Mbp and Piton et al.'s 6.8 Mbp. With Piton et al.'s 6.8 Mbp being a `r AGS_overestimate_fold` -fold overestimate (`r AGS_overestimate_pc` %).
@@ -194,19 +196,12 @@ Despite their inaccurate AGS estimates, we actually observe a stronger relations
 
 ```{r}
 
-fig1 <- fig1a / (fig1b + fig1c) + plot_annotation(tag_levels = 'A')  ggsave("figures/figure_1.png", fig1, width = 9, height = 12)
+fig1 <- fig1a / (fig1b + fig1c) + plot_annotation(tag_levels = 'A')  
+
+ggsave("figures/figure_1.png", fig1, width = 9, height = 12)
 ```
 
-### Validation with an independent dataset
-
-Piton et al. cite an [independent study](u) of soil metagenomes that also found the same relationship between AGS and soil pH. Let's see if we also observe this trend.
-
-```{r}
-
-
-```
-
-### AGS vs soil pH by biome
+### AGS vs soil pH by biome (Supplementary Figure 1)
 
 ```{r}
 #| message: false
@@ -231,10 +226,42 @@ df %>%
     axis.text.y = element_text(size = 14),
     axis.title = element_text(size = 14, face = "bold")
         ) +
-  ylab("Soil pH") +
-  xlab("Average Genome Size (Mbp)")
+  ylab("Average Genome Size (Mbp)") +
+  xlab("Soil pH")
   
 
+```
+
+### Validation with an independent dataset (Supplementary Figure 2)
+
+Piton et al. cite an [independent study](u) of soil metagenomes that also found the same relationship between AGS and soil pH. Let's see if we also observe this trend.
+
+```{r}
+
+wang <- read_delim("data/ben/ncomms_paper/ncomms_collected.csv")
+
+glm_wang <- glm(average_bacterial_archaeal_genome_size~ pH, 
+                wang, family = Gamma)
+
+summary(glm_wang)
+
+#R squared
+r_wang <- paste0("~italic(R^2)", " == ", scales::number(with(summary(glm_wang), 1 - deviance/null.deviance), accuracy = 0.0001))
+
+
+wang %>%
+  ggplot(aes(x = pH, y = average_bacterial_archaeal_genome_size / 1e6)) +
+  geom_smooth(method = "glm") +
+  geom_point(aes(colour = site.latitude), size = 5) +
+  annotate("text", x = 4, y = 4.3, label = r_wang, 
+           parse = TRUE, size = 6) +
+  theme_classic() +
+  theme(
+    legend.position = "right",
+    axis.text = element_text(size = 14),
+    axis.title = element_text(size = 14, face = "bold")
+        ) +
+  labs(x = "Soil pH", y = "SMF Average Genome Size (Mbp)")
 ```
 
 ### Supplemental analyses
@@ -299,4 +326,11 @@ df %>%
   labs(x = "Mean mapping coverage KEGG", y = "SingleM Microbial Fraction (%)")
 
 
+```
+
+### Report package/software versions reproducibility
+
+```{r}
+
+installed.packages()[names(sessionInfo()$otherPkgs), "Version"]
 ```
