@@ -33,7 +33,7 @@ df <- pooled_smf %>%
 
 We’re left now with 126 samples (close to the original 128).
 
-### How much non-bacterial DNA are in these samples?
+### How much eukaryotic DNA are in these samples?
 
 Piton et al. asserted that:
 
@@ -67,7 +67,7 @@ fig1a <- df %>%
     axis.text.y = element_text(size = 14),
     axis.title = element_text(size = 14, face = "bold")
         ) +
-  ylab("Non-bacterial fraction (%)") +
+  ylab("Eukaryotic fraction (%)") +
   xlab("Soil environment")
   
 fig1a
@@ -110,7 +110,7 @@ al.’s 6.8 Mbp.
 SMF can help here, as it:
 
 1.  Accounts for the fact that different metagenomes can have different
-    proportions of non-bacterial DNA
+    proportions of eukaryotic DNA
 2.  Is not reliant on alignment to reference genomes
 
 Let’s see where SMF’s AGS estimates lie between Piton et al. and Osmund
